@@ -18,7 +18,6 @@ if (!class_exists('Botzywpsync_REST_API')) Botzywpsync_Loader::init();
 add_filter('pre_option_botzy_api_key', static function () { return 'unit-test-key'; });
 add_filter('pre_option_botzy_enabled_types', static function () { return ['post']; });
 add_filter('pre_option_botzy_output_limit', static function () { return 2; });
-add_filter('pre_option_botzy_shared_fields', static function () { return []; });
 add_filter('pre_option_botzy_allow_private', static function () { return '0'; });
 add_filter('pre_option_permalink_structure', static function () { return ''; });
 
@@ -28,6 +27,9 @@ $source = $wpdb->posts;
 $table = 'botzy_contract_' . bin2hex(random_bytes(6));
 if (false === $wpdb->query("CREATE TEMPORARY TABLE $table LIKE $source")) throw new RuntimeException('Falta permiso para tablas temporales.');
 $wpdb->posts = $table;
+$meta_source = $wpdb->postmeta;
+$wpdb->postmeta = $table . '_meta';
+if (false === $wpdb->query("CREATE TEMPORARY TABLE {$wpdb->postmeta} LIKE $meta_source")) throw new RuntimeException('Falta la tabla temporal de metadatos.');
 $base = random_int(100000000, 1900000000);
 foreach ([
     [1, 'Renovación', 'publish', '', ''],
@@ -38,12 +40,30 @@ foreach ([
     [6, 'Agenda', 'private', '', 'Contenido reservado.'],
     [7, 'Agenda local', 'publish', '', 'Actividades públicas.'],
     [8, 'Reserva', 'private', 'protegido', ''],
-] as [$i, $title, $status, $password, $body]) {
+    [9, 'Contacto', 'publish', '', '', 'page'],
+] as $fixture) {
+    [$i, $title, $status, $password, $body] = $fixture;
     $ok = $wpdb->insert($table, ['ID' => $base + $i, 'post_title' => $title, 'post_name' => sanitize_title($title),
-        'post_type' => 'post', 'post_status' => $status, 'post_password' => $password, 'post_content' => $body,
+        'post_type' => $fixture[5] ?? 'post', 'post_status' => $status, 'post_password' => $password, 'post_content' => $body,
         'post_excerpt' => '', 'to_ping' => '', 'pinged' => '', 'post_content_filtered' => '',
         'post_date' => '2024-01-01 00:00:00', 'post_date_gmt' => '2024-01-01 00:00:00']);
     if (!$ok) throw new RuntimeException('No se pudo preparar el catálogo temporal.');
+}
+foreach ([
+    [$base + 2, 'duracion_minutos', '30'],
+    [$base + 2, 'modalidades', ['Presencial', 'En línea']],
+    [$base + 2, '_nota_interna', 'Reservada'],
+    [$base + 2, 'estructura', ['nivel' => ['avanzado']]],
+    [$base + 6, 'ubicacion', 'Sala 2'],
+    [$base + 9, 'horario', 'Lunes a viernes'],
+] as [$post_id, $meta_key, $meta_value]) {
+    if (!$wpdb->insert($wpdb->postmeta, ['post_id' => $post_id, 'meta_key' => $meta_key, 'meta_value' => maybe_serialize($meta_value)])) {
+        throw new RuntimeException('No se pudo preparar el metadato de prueba.');
+    }
+}
+function get_fields($post_id, $format_value = true) {
+    global $base;
+    return $post_id === $base + 2 ? ['ponente' => '<b>Ana</b>'] : false;
 }
 function call_botzy($op, $data) {
     $request = new WP_REST_Request('POST', '/botzy/' . $op);
@@ -69,6 +89,7 @@ foreach (['search','item'] as $op) {
         && $caps['defaults']['showRestrictedTitles'] === false && $caps['restricted_item_fields'] === ['access','id','title'], "Descubrimiento de títulos para $op");
 }
 check_botzy($caps['max_limit'] === 2 && array_column($caps['post_types'], 'type') === ['post'], 'Descubrimiento por sitio');
+check_botzy($caps['dynamic_field_prefixes'] === ['meta.'], 'Descubrimiento de campos dinámicos');
 $rows = expect_response('search', ['q' => 'renovación', 'limit' => 20], 'found', 200, 2);
 check_botzy($rows[0]['id'] === (string)($base + 1) && $rows[0]['image_url'] === null && $rows[0]['summary'] === '', 'Orden, ID de cadena y campos vacíos');
 check_botzy($rows[1]['summary'] === 'Solicitud anual.' && wp_parse_url($rows[1]['url'], PHP_URL_HOST), 'Candidato secundario completo');
@@ -76,6 +97,9 @@ $again = expect_response('search', ['q' => 'renobacion', 'limit' => 1], 'found',
 check_botzy($again[0]['id'] === $rows[0]['id'], 'La aproximación conserva el ID');
 $detail = expect_response('item', ['id' => $rows[1]['id']], 'found', 200, 1);
 check_botzy($detail[0]['id'] === $rows[1]['id'], 'Selección posterior por ID');
+$expected_fields = ['meta.duracion_minutos' => '30', 'meta.modalidades' => 'Presencial, En línea', 'meta.ponente' => 'Ana'];
+check_botzy((array) $detail[0]['fields'] === $expected_fields && (array) $rows[1]['fields'] === $expected_fields,
+    'Búsqueda y ficha detectan ACF y metadatos sin configuración y omiten los protegidos y anidados');
 expect_response('search', ['q' => 'ornitorrinco'], 'empty', 200, 0);
 expect_response('search', ['q' => 'formulario'], 'empty', 200, 0);
 expect_response('search', ['q' => 'confidensial'], 'empty', 200, 0);
@@ -109,11 +133,15 @@ expect_response('item', $agenda + ['showRestrictedTitles' => null], 'error', 400
 add_filter('pre_option_botzy_allow_private', static function () { return '1'; }, 20);
 $full = expect_response('item', $agenda + ['allowPrivate' => true, 'showRestrictedTitles' => true], 'found', 200, 1);
 check_botzy($full[0]['access'] === 'available' && $full[0]['summary'] === 'Contenido reservado.' && strpos($full[0]['url'], 'token=') !== false, 'Selección privada completa con permiso actual');
+check_botzy((array) $full[0]['fields'] === ['meta.ubicacion' => 'Sala 2'], 'Los metadatos privados requieren acceso a la ficha');
 check_botzy(expect_response('item', $agenda + $announce, 'found', 200, 1) === [$restricted], 'La clave autorizada respeta allowPrivate en cada petición');
 $authorized = expect_response('search', ['q' => 'confidensial', 'allowPrivate' => true], 'found', 200, 1);
 check_botzy($authorized[0]['id'] === (string)($base + 4) && strpos($authorized[0]['url'], 'token=') !== false, 'Privado autorizado con enlace firmado');
 expect_response('search', ['q' => 'confidensial'], 'empty', 200, 0);
 expect_response('item', ['id' => (string)($base + 5), 'allowPrivate' => true], 'empty', 200, 0);
+add_filter('pre_option_botzy_enabled_types', static function () { return ['post', 'page']; }, 20);
+$page = expect_response('item', ['id' => (string)($base + 9)], 'found', 200, 1);
+check_botzy((array) $page[0]['fields'] === ['meta.horario' => 'Lunes a viernes'], 'Las páginas también detectan sus metadatos');
 check_botzy(!isset($server->get_routes()['/botzy/v1/search']) && !isset($server->get_routes()['/botzy/v2/search']), 'API única sin rutas anteriores');
 add_filter('posts_pre_query', static function () { throw new RuntimeException('Fixture'); });
 expect_response('search', ['q' => 'test'], 'error', 500, 0, 'search_failed');

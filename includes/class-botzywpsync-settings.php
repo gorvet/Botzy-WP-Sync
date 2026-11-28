@@ -12,18 +12,6 @@ class Botzywpsync_Settings {
 
     public static function register_settings() {
         register_setting('botzy_settings_group', 'botzy_allow_private', ['sanitize_callback' => 'rest_sanitize_boolean']);
-        register_setting('botzy_settings_group', 'botzy_shared_fields', ['sanitize_callback' => static function ($value) {
-            $fields = [];
-            foreach (Botzywpsync_REST_API::available_types() as $type => $object) {
-                $input = $value[$type] ?? '';
-                $keys = is_array($input) ? $input : explode(',', (string) $input);
-                foreach ($keys as $key) {
-                    $key = trim((string) $key);
-                    if (preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/D', $key) && !is_protected_meta($key, 'post')) $fields[$type][] = $key;
-                }
-            }
-            return $fields;
-        }]);
         register_setting('botzy_settings_group', 'botzy_enabled_types', ['sanitize_callback' => static function ($value) {
             return array_values(array_intersect(array_keys(Botzywpsync_REST_API::available_types()), (array) $value));
         }]);
@@ -72,17 +60,6 @@ class Botzywpsync_Settings {
                                     <label><input type="checkbox" name="botzy_enabled_types[]" value="<?= esc_attr($slug) ?>" <?php checked(isset($enabled[$slug])); ?>> <?= esc_html($object->labels->singular_name) ?></label><br>
                                 <?php endforeach; ?>
                             </fieldset></td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Campos adicionales</th>
-                            <td><p>Indica las claves de los campos simples que el bot puede mostrar, separadas por comas.</p>
-                                <?php $shared = get_option('botzy_shared_fields', []);
-                                foreach (Botzywpsync_REST_API::available_types() as $slug => $object) : ?>
-                                    <p><label><?= esc_html($object->labels->singular_name) ?><br>
-                                        <input type="text" class="regular-text" name="botzy_shared_fields[<?= esc_attr($slug) ?>]" value="<?= esc_attr(implode(', ', $shared[$slug] ?? [])) ?>">
-                                    </label></p>
-                                <?php endforeach; ?>
-                            </td>
                         </tr>
                         <tr>
                             <th scope="row">Contenido privado</th>

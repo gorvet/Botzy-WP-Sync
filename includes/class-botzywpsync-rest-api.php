@@ -34,9 +34,36 @@ class Botzywpsync_REST_API {
         if ($type === 'product' && function_exists('wc_get_product')) {
             $schema = ['sku' => 'string', 'price' => 'decimal_string', 'currency' => 'string', 'stock_status' => 'string'];
         }
-        $keys = get_option('botzy_shared_fields', []);
-        foreach ($keys[$type] ?? [] as $key) $schema['meta.' . $key] = 'string';
         return $schema;
+    }
+
+    private static function custom_fields($post_id) {
+        $meta = get_post_meta($post_id);
+        $acf = function_exists('get_fields') ? get_fields($post_id, false) : [];
+        $acf = is_array($acf) ? $acf : [];
+        $names = array_unique(array_merge(array_keys($meta), array_keys($acf)));
+        $fields = [];
+
+        foreach ($names as $name) {
+            if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_-]{1,60}$/D', $name)
+                || is_protected_meta($name, 'post')) {
+                continue;
+            }
+
+            $values = isset($meta[$name]) ? array_map('maybe_unserialize', $meta[$name]) : [];
+            $value = $acf[$name] ?? (count($values) === 1 ? reset($values) : $values);
+            if (is_scalar($value)) {
+                $fields['meta.' . $name] = Botzywpsync_Search::plain($value);
+                continue;
+            }
+
+            if (is_array($value) && $value && array_filter($value, 'is_scalar') === $value
+                && array_values($value) === $value) {
+                $fields['meta.' . $name] = implode(', ', array_map([Botzywpsync_Search::class, 'plain'], $value));
+            }
+        }
+
+        return $fields;
     }
 
     public static function enabled_types() {
@@ -92,6 +119,7 @@ class Botzywpsync_REST_API {
                             'required' => ['apikey', 'id'], 'optional' => ['allowPrivate', 'showRestrictedTitles']],
                     ],
                     'post_types' => $contentTypes, 'item_fields' => self::FIELDS,
+                    'dynamic_field_prefixes' => ['meta.'],
                     'restricted_item_fields' => ['access', 'id', 'title'],
                     'defaults' => ['allowPrivate' => false, 'showRestrictedTitles' => false],
                     'max_limit' => $max, 'allow_private' => self::private_allowed(),
@@ -157,19 +185,12 @@ class Botzywpsync_REST_API {
         if (!$url) throw new RuntimeException('Invalid permalink');
         $summary = $post->post_excerpt !== '' ? $post->post_excerpt : $post->post_content;
         $fields = [];
-        foreach (self::field_schema($post->post_type) as $key => $format) {
-            if (strpos($key, 'meta.') === 0) {
-                $name = substr($key, 5);
-                if (!metadata_exists('post', $post->ID, $name)) continue;
-                $value = get_post_meta($post->ID, $name, true);
-                if (!is_protected_meta($name, 'post') && is_scalar($value)) $fields[$key] = Botzywpsync_Search::plain($value);
-            }
-        }
         if ($post->post_type === 'product' && function_exists('wc_get_product')) {
             $product = wc_get_product($post->ID);
             $fields += ['sku' => $product->get_sku(), 'price' => $product->get_price(),
                 'currency' => get_woocommerce_currency(), 'stock_status' => $product->get_stock_status()];
         }
+        $fields += self::custom_fields($post->ID);
         return ['access' => 'available', 'id' => (string) $post->ID, 'type' => $post->post_type, 'fields' => (object) $fields,
             'title' => Botzywpsync_Search::plain($post->post_title),
             'summary' => wp_trim_words(Botzywpsync_Search::plain($summary), 45, '…'),

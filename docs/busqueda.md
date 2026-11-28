@@ -8,7 +8,9 @@ Las tres operaciones reciben POST con `Content-Type: application/json` y la clav
 | Búsqueda | `/wp-json/botzy/search` | Al recibir la consulta. |
 | Ficha | `/wp-json/botzy/item` | Al elegir una opción. Envía `apikey`, el `id`, `allowPrivate` y, si corresponde, `showRestrictedTitles`. |
 
-El descubrimiento devuelve `operations` con método, URL y argumentos, `post_types` con etiquetas y campos adicionales por tipo, `item_fields` con los campos básicos, `max_limit`, `language_filter` y `allow_private`. Los tipos públicos personalizados se habilitan en **Botzy Sync → Contenidos para Botzy**. La misma pantalla permite compartir campos escalares mediante sus claves de metadatos. Las claves compartidas aparecen bajo `fields` con el prefijo `meta.`. Los valores compuestos se omiten. Con WooCommerce activo se anuncian SKU, precio, moneda y estado de existencias para productos.
+El descubrimiento devuelve `operations` con método, URL y argumentos, `post_types` con los tipos habilitados y sus campos fijos, `item_fields` con los campos básicos, `dynamic_field_prefixes`, `max_limit`, `language_filter` y `allow_private`. Los tipos públicos personalizados se habilitan en **Botzy Sync → Contenidos para Botzy**. Con WooCommerce activo se anuncian SKU, precio, moneda y estado de existencias para productos.
+
+Cada ficha detecta automáticamente los campos de ACF y los metadatos de WordPress, incluidos los que guardan los metaboxes como metadatos de la publicación. Las claves aparecen bajo `fields` con el prefijo `meta.`. Los valores simples se devuelven como texto y las listas simples se convierten a texto separado por comas. Se omiten los metadatos protegidos, los objetos y las estructuras anidadas.
 
 ## Petición de búsqueda
 
