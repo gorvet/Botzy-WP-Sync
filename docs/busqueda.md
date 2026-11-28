@@ -26,7 +26,8 @@ Botzy envía `allowPrivate` en cada petición. `showRestrictedTitles` es un bool
 
 | allowPrivate | showRestrictedTitles | Resultado |
 |---|---|---|
-| true | Cualquiera | Con permiso de la clave, las fichas públicas y privadas llevan `access: "available"`. Los enlaces privados incluyen el JWS temporal. Una clave sin permiso recibe HTTP 403. |
+| true, con permiso en WordPress | Cualquiera | Las fichas públicas y privadas llevan `access: "available"`. Los enlaces privados incluyen el JWS temporal. |
+| true, con el acceso privado desactivado en WordPress | Cualquiera | Se aplica el mismo comportamiento que con `allowPrivate: false`, según el valor de `showRestrictedTitles`. |
 | false | false | Solo se entregan y cuentan fichas públicas. Una búsqueda con coincidencias exclusivamente privadas devuelve `empty`. |
 | false | true | Se entregan primero las fichas públicas completas. Los lugares restantes pueden contener títulos privados con exactamente `access`, `id` y `title`. Si solo hay títulos restringidos, el estado es `found`. |
 
@@ -61,12 +62,6 @@ El primer elemento es el principal. Cada ID es una cadena válida dentro de la c
 
 ```json
 {"status":"error","returned_count":0,"items":[],"error":{"code":"unauthorized"}}
-```
-
-**Consulta privada sin permiso · HTTP 403**
-
-```json
-{"status":"error","returned_count":0,"items":[],"error":{"code":"forbidden","field":"allowPrivate"}}
 ```
 
 Las entradas inválidas devuelven HTTP 400 con `invalid_query` o `unsupported_post_type`. Un fallo interno devuelve HTTP 500 con `search_failed`. Botzy elige el destino por `status` y gestiona también los fallos de transporte. `returned_count` cuenta las fichas entregadas. Esta versión omite `total_matches` porque ordena una selección acotada de candidatos.

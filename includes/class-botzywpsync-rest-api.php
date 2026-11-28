@@ -127,9 +127,9 @@ class Botzywpsync_REST_API {
                 ]);
             }
 
-            $private = $params['allowPrivate'] ?? false;
-            if (!is_bool($private)) return self::error('invalid_query', 400, 'allowPrivate');
-            if ($private && !self::private_allowed()) return self::error('forbidden', 403, 'allowPrivate');
+            $requestedPrivate = $params['allowPrivate'] ?? false;
+            if (!is_bool($requestedPrivate)) return self::error('invalid_query', 400, 'allowPrivate');
+            $private = $requestedPrivate && self::private_allowed();
             $showRestricted = array_key_exists('showRestrictedTitles', $params) ? $params['showRestrictedTitles'] : false;
             if (!is_bool($showRestricted)) return self::error('invalid_query', 400, 'showRestrictedTitles');
 

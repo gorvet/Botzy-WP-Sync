@@ -105,7 +105,13 @@ expect_response('search', ['q' => 'formulario'], 'empty', 200, 0);
 expect_response('search', ['q' => 'confidensial'], 'empty', 200, 0);
 expect_response('search', ['q' => 'declaracion'], 'empty', 200, 0);
 expect_response('item', ['id' => (string)($base + 4)], 'empty', 200, 0);
-expect_response('search', ['q' => 'confidensial', 'allowPrivate' => true], 'error', 403, 0, 'forbidden');
+expect_response('search', ['q' => 'confidensial', 'allowPrivate' => true], 'empty', 200, 0);
+$public_only = expect_response('search', ['q' => 'agenda', 'allowPrivate' => true], 'found', 200, 1);
+check_botzy($public_only[0]['id'] === (string) ($base + 7), 'Pedir privados sin permiso mantiene los resultados públicos');
+$public_item = expect_response('item', ['id' => $public_only[0]['id'], 'allowPrivate' => true], 'found', 200, 1);
+check_botzy($public_item[0]['id'] === $public_only[0]['id'] && $public_item[0]['access'] === 'available',
+    'Pedir privados sin permiso permite abrir la ficha pública');
+expect_response('item', ['id' => (string) ($base + 6), 'allowPrivate' => true], 'empty', 200, 0);
 expect_response('search', ['q' => 'renovación', 'apikey' => 'invalid'], 'error', 401, 0, 'unauthorized');
 expect_response('search', ['q' => ''], 'error', 400, 0, 'invalid_query');
 expect_response('search', ['q' => 'test', 'post_type' => 'page'], 'error', 400, 0, 'unsupported_post_type');
@@ -125,7 +131,8 @@ $only = expect_response('search', ['q' => 'confidensial'] + $announce, 'found', 
 check_botzy($only[0] === ['access' => 'restricted', 'id' => (string)($base + 4), 'title' => 'Formulario confidencial'], 'Coincidencia aproximada solo con título');
 check_botzy(expect_response('item', $agenda + $announce, 'found', 200, 1) === [$restricted], 'Selección restringida por ID');
 expect_response('item', $agenda, 'empty', 200, 0);
-expect_response('item', $agenda + ['allowPrivate' => true, 'showRestrictedTitles' => true], 'error', 403, 0, 'forbidden');
+check_botzy(expect_response('item', $agenda + ['allowPrivate' => true, 'showRestrictedTitles' => true], 'found', 200, 1) === [$restricted],
+    'Pedir el título restringido sin permiso de lectura privada solo entrega el título');
 expect_response('search', ['q' => 'reservado'] + $announce, 'empty', 200, 0);
 expect_response('item', ['id' => (string)($base + 8)] + $announce, 'empty', 200, 0);
 expect_response('search', ['q' => 'reserva'] + $announce, 'empty', 200, 0);
@@ -137,6 +144,12 @@ check_botzy((array) $full[0]['fields'] === ['meta.ubicacion' => 'Sala 2'], 'Los 
 check_botzy(expect_response('item', $agenda + $announce, 'found', 200, 1) === [$restricted], 'La clave autorizada respeta allowPrivate en cada petición');
 $authorized = expect_response('search', ['q' => 'confidensial', 'allowPrivate' => true], 'found', 200, 1);
 check_botzy($authorized[0]['id'] === (string)($base + 4) && strpos($authorized[0]['url'], 'token=') !== false, 'Privado autorizado con enlace firmado');
+$combined = expect_response('search', ['q' => 'agenda', 'allowPrivate' => true], 'found', 200, 2);
+$combined_by_id = array_column($combined, null, 'id');
+check_botzy(($combined_by_id[$base + 7]['access'] ?? null) === 'available'
+    && ($combined_by_id[$base + 6]['access'] ?? null) === 'available'
+    && strpos($combined_by_id[$base + 6]['url'], 'token=') !== false,
+    'Con permiso, allowPrivate suma el resultado privado al público');
 expect_response('search', ['q' => 'confidensial'], 'empty', 200, 0);
 expect_response('item', ['id' => (string)($base + 5), 'allowPrivate' => true], 'empty', 200, 0);
 add_filter('pre_option_botzy_enabled_types', static function () { return ['post', 'page']; }, 20);
