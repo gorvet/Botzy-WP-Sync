@@ -3,7 +3,7 @@
  * Plugin Name: Botzy WP Sync
  * Plugin URI:        https://www.botzy.app
  * Description: Conecta WordPress con Botzy para responder preguntas mediante búsqueda inteligente por tipo de contenido.
- * Version: 1.2.6
+ * Version: 1.2.7
  * Author: Juank de Gorvet
  * Author URI:        https://api.whatsapp.com/send/?phone=5353779424
  * License: GPLv2 or later
