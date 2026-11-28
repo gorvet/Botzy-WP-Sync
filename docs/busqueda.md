@@ -35,6 +35,8 @@ La búsqueda de títulos restringidos usa solo el título, incluida la coinciden
 
 ## Ejemplos de respuesta
 
+`image_url` contiene la URL de la imagen destacada o, si falta, de la primera imagen utilizable del contenido. Si la publicación no tiene una imagen utilizable, el valor es `null`.
+
 **Una coincidencia sin imagen ni resumen · HTTP 200**
 
 ```json

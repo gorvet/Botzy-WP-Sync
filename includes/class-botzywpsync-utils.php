@@ -80,17 +80,39 @@ class Botzywpsync_Utils {
     }
 
     public static function get_post_image($post_id) {
-        // Imagen destacada primero
-        $thumbnail = get_the_post_thumbnail_url($post_id, 'medium');
-        if ($thumbnail) return $thumbnail;
+        $base = get_permalink($post_id);
+        $thumbnail = self::image_url(get_the_post_thumbnail_url($post_id, 'medium'), $base);
+        if ($thumbnail !== null) return $thumbnail;
 
-        // Buscar la primera imagen del contenido
-        $content = get_post_field('post_content', $post_id);
-        if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $content, $matches)) {
-            return esc_url_raw($matches[1]);
+        $content = (string) get_post_field('post_content', $post_id, 'raw');
+        $image = self::first_content_image($content, $base);
+        if ($image === null && has_blocks($content)) {
+            $image = self::first_content_image(do_blocks($content), $base);
+        }
+
+        return $image;
+    }
+
+    private static function first_content_image($content, $base) {
+        preg_match_all('/<img\b[^>]*>/i', $content, $images);
+        foreach ($images[0] as $tag) {
+            preg_match_all('/\s(src|data-src|data-lazy-src)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>"\']+))/i', $tag, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $candidate = ($match[2] ?? '') ?: (($match[3] ?? '') ?: ($match[4] ?? ''));
+                $image = self::image_url($candidate, $base);
+                if ($image !== null) return $image;
+            }
         }
 
         return null;
+    }
+
+    private static function image_url($url, $base) {
+        $url = trim(html_entity_decode((string) $url, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($url === '' || $url[0] === '#' || $url[0] === '?') return null;
+
+        $url = esc_url_raw(WP_Http::make_absolute_url($url, $base), ['http', 'https']);
+        return preg_match('~^https?://~i', $url) && wp_parse_url($url, PHP_URL_HOST) ? $url : null;
     }
 
     public static function build_result_item($post, $query = '', $search_type = '') {

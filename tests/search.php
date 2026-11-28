@@ -41,6 +41,8 @@ foreach ([
     [7, 'Agenda local', 'publish', '', 'Actividades públicas.'],
     [8, 'Reserva', 'private', 'protegido', ''],
     [9, 'Contacto', 'publish', '', '', 'page'],
+    [10, 'Ilustración', 'publish', '', '<img src=""><img src="data:image/gif;base64,R0lGODlh"><img src = /uploads/primera.jpg><img src="https://example.test/segunda.jpg">'],
+    [11, 'Imagen de bloque', 'publish', '', '<!-- wp:botzy/contract-image /-->'],
 ] as $fixture) {
     [$i, $title, $status, $password, $body] = $fixture;
     $ok = $wpdb->insert($table, ['ID' => $base + $i, 'post_title' => $title, 'post_name' => sanitize_title($title),
@@ -155,6 +157,25 @@ expect_response('item', ['id' => (string)($base + 5), 'allowPrivate' => true], '
 add_filter('pre_option_botzy_enabled_types', static function () { return ['post', 'page']; }, 20);
 $page = expect_response('item', ['id' => (string)($base + 9)], 'found', 200, 1);
 check_botzy((array) $page[0]['fields'] === ['meta.horario' => 'Lunes a viernes'], 'Las páginas también detectan sus metadatos');
+$image_id = (string) ($base + 10);
+$image_item = expect_response('item', ['id' => $image_id], 'found', 200, 1);
+$image_search = expect_response('search', ['q' => 'ilustración'], 'found', 200, 1);
+$expected_image = WP_Http::make_absolute_url('/uploads/primera.jpg', $image_item[0]['url']);
+check_botzy($image_item[0]['image_url'] === $expected_image && $image_search[0]['image_url'] === $expected_image,
+    'La ficha y la búsqueda usan la primera imagen utilizable cuando falta la destacada');
+register_block_type('botzy/contract-image', ['render_callback' => static function () {
+    return '<img src="https://example.test/bloque.jpg">';
+}]);
+$block_item = expect_response('item', ['id' => (string) ($base + 11)], 'found', 200, 1);
+check_botzy($block_item[0]['image_url'] === 'https://example.test/bloque.jpg', 'Detecta imágenes de bloques dinámicos');
+add_filter('post_thumbnail_id', static function ($id, $post) use ($image_id, $base) {
+    return (string) $post->ID === $image_id ? $base + 12 : $id;
+}, 10, 2);
+add_filter('post_thumbnail_url', static function ($url, $post) use ($image_id) {
+    return (string) $post === $image_id ? 'https://example.test/destacada.jpg' : $url;
+}, 10, 2);
+$featured_item = expect_response('item', ['id' => $image_id], 'found', 200, 1);
+check_botzy($featured_item[0]['image_url'] === 'https://example.test/destacada.jpg', 'La destacada conserva la prioridad');
 check_botzy(!isset($server->get_routes()['/botzy/v1/search']) && !isset($server->get_routes()['/botzy/v2/search']), 'API única sin rutas anteriores');
 add_filter('posts_pre_query', static function () { throw new RuntimeException('Fixture'); });
 expect_response('search', ['q' => 'test'], 'error', 500, 0, 'search_failed');
